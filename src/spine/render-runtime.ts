@@ -102,13 +102,22 @@ export async function renderRuntimeFrame(opts: RuntimeFrameOptions): Promise<Run
   state.apply(skeleton);
   skeleton.updateWorldTransform();
 
-  // 计算包围盒以自动缩放居中
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const b of skeleton.bones) {
-    if (b.worldX < minX) minX = b.worldX;
-    if (b.worldX > maxX) maxX = b.worldX;
-    if (b.worldY < minY) minY = b.worldY;
-    if (b.worldY > maxY) maxY = b.worldY;
+  // Frame the visible attachments. Bone positions alone can have zero extent
+  // even when a mesh or region occupies a large area around the root bone.
+  const offset = new spineMod.Vector2();
+  const size = new spineMod.Vector2();
+  skeleton.getBounds(offset, size);
+  let minX = offset.x, minY = offset.y;
+  let maxX = offset.x + size.x, maxY = offset.y + size.y;
+  if (![minX, minY, maxX, maxY].every(Number.isFinite)) {
+    minX = minY = Infinity;
+    maxX = maxY = -Infinity;
+    for (const b of skeleton.bones) {
+      minX = Math.min(minX, b.worldX);
+      minY = Math.min(minY, b.worldY);
+      maxX = Math.max(maxX, b.worldX);
+      maxY = Math.max(maxY, b.worldY);
+    }
   }
 
   const W = opts.width || 512;
@@ -123,6 +132,8 @@ export async function renderRuntimeFrame(opts: RuntimeFrameOptions): Promise<Run
   ctx.scale(scale, -scale);
   ctx.translate(-(minX + maxX) / 2, -(minY + maxY) / 2);
   const renderer = new spineMod.canvas.SkeletonRenderer(ctx);
+  // spine-canvas defaults to drawImages, which skips every MeshAttachment.
+  renderer.triangleRendering = true;
   renderer.draw(skeleton);
 
   // 叠加骨骼线框 + 关节点（世界坐标已在当前 ctx 变换空间中）
